@@ -34,7 +34,7 @@ class Element(dict, Generic[T]):
     :param notes: the notes of the element
     :type notes: list
     """
-    def __init__(self, element: str):
+    def __init__(self, element: str, max_header: int, root_header):
         (tag, line) = get_tag(element)
         self.in_list = False
         self.value: str = line
@@ -44,8 +44,9 @@ class Element(dict, Generic[T]):
         self.notes: list[str] = []
         self.is_header: bool = "h" in tag
         self.header_size: int = int(tag[1:]) if self.is_header else 0
-        self.is_root_tag: bool = self.tag == 'h2'
-        self.largest_header = 8
+        self.__root_header = root_header
+        self.is_root_tag: bool = self.tag == self.__root_header
+        self.largest_header = max_header
         dict.__init__(self, value=self.value, tag=self.tag, notes=self.notes, children=self.children)
 
     def set_parent(self, parent: 'Element[T]'):
@@ -138,17 +139,17 @@ def add_node(json_arrays: list, node: Element):
         json_arrays.append(node.get_root())
     return json_arrays
 
-def make_nested_json(elements) -> list[Element]:
+def make_nested_json(elements, max_header=6, root_header="h2") -> list[Element]:
     """Turns an element array into a nested json array with h1 as root"""
     json_arrays = []
     def keep_going():
         return len(elements) > 0
 
     def get_next_to_include():
-        scan = Element(elements.pop(0))
+        scan = Element(elements.pop(0), max_header, root_header)
         while(scan.exclude_tag()  and keep_going()):
             raw = elements.pop(0)
-            scan = Element(raw)
+            scan = Element(raw, max_header, root_header)
         return scan
 
     last = None
@@ -314,12 +315,20 @@ def build_dict(elements):
 
 
 def main():
-    # use argparse to get the output file
+    # use argparse to get the input PDF file
     parser = argparse.ArgumentParser(description='Extract text from PDF')
     parser.add_argument('-i', '--input', help='input file', required=True)
+    # use argparse to get the max header size
+    parser.add_argument('-m', '--max', help='max header', required=False)
+
+    # use argparse to get the root header size
+    parser.add_argument('-r', '--root', help='root header', required=False)
+
+
     args = parser.parse_args()
     input_file = args.input
     output_file = f"output/{(input_file.split('.')[0] + '.json').split('/')[-1]}"
+
     doc = fitz.open(input_file)
 
     font_counts, styles = fonts(doc, granularity=False) # get font counts and styles
@@ -328,11 +337,15 @@ def main():
 
     elements = headers_para(doc, size_tag) # get headers and paragraphs
 
+    # get the root header
+    root_header = args.root or None
 
+    # get the max header
+    max_header = int(args.max) or None
 
+    opts = [ opt for opt in [root_header, max_header] if opt ]
 
-
-    nested = make_nested_json(elements)
+    nested = make_nested_json(elements, *opts)
 
     print(f'Writing to {output_file} [{len(nested)}] elements')
     with open(output_file, 'w') as json_out: # write to json file
