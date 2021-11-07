@@ -1,3 +1,4 @@
+import argparse
 from operator import itemgetter
 from typing import TypeVar, Union, Generic
 import fitz
@@ -44,7 +45,7 @@ class Element(dict, Generic[T]):
         self.is_header: bool = "h" in tag
         self.header_size: int = int(tag[1:]) if self.is_header else 0
         self.is_root_tag: bool = self.tag == 'h2'
-        self.largest_header = 6
+        self.largest_header = 8
         dict.__init__(self, value=self.value, tag=self.tag, notes=self.notes, children=self.children)
 
     def set_parent(self, parent: 'Element[T]'):
@@ -313,12 +314,13 @@ def build_dict(elements):
 
 
 def main():
-
-    # OUTPUT_FILE = './output/madhouse.json'
-    # INPUT_FILE = './input/madhouse.pdf'
-    OUTPUT_FILE = './output/blue_alley.json'
-    INPUT_FILE = './input/blue_alley.pdf'
-    doc = fitz.open(INPUT_FILE)
+    # use argparse to get the output file
+    parser = argparse.ArgumentParser(description='Extract text from PDF')
+    parser.add_argument('-i', '--input', help='input file', required=True)
+    args = parser.parse_args()
+    input_file = args.input
+    output_file = f"output/{(input_file.split('.')[0] + '.json').split('/')[-1]}"
+    doc = fitz.open(input_file)
 
     font_counts, styles = fonts(doc, granularity=False) # get font counts and styles
 
@@ -326,10 +328,14 @@ def main():
 
     elements = headers_para(doc, size_tag) # get headers and paragraphs
 
+
+
+
+
     nested = make_nested_json(elements)
 
-    print(f'Writing to {OUTPUT_FILE} [{len(nested)}] elements')
-    with open(OUTPUT_FILE, 'w') as json_out: # write to json file
+    print(f'Writing to {output_file} [{len(nested)}] elements')
+    with open(output_file, 'w') as json_out: # write to json file
         json.dump(nested, json_out, indent=4) # dump the elements to json file
 
 
