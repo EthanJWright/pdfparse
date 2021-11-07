@@ -57,25 +57,30 @@ class Element(dict, Generic[T]):
         """Adds a child to the element.
         :param element: the raw child to add
         """
-        if self.header_size < element.header_size:
-            element.parent = self
-            self.add_child(element)
+        def add_as_child(parent, element):
+            element.set_parent(parent)
+            parent.add_child(element)
+            return element
+
+        if self.parent is None: # if this is the root element
+            return add_as_child(self, element)
+
+        if self.header_size < element.header_size: # if the child is a larger header
+            return add_as_child(self, element)
+
+        current = self.parent
+        while(current.parent is not None and current.header_size < element.header_size): # if the child is a smaller header
+            current = current.parent
+
+        if current.header_size == element.header_size and current.parent is not None:
+            element.parent = current.parent
+            current.parent.add_child(element)
             return
 
-        if self.parent is not None and self.parent.header_size <= element.header_size:
-            element.set_parent(self.parent)
-            self.parent.add_header_element(element)
-            return
+        element.parent = current
+        current.children.append(element)
 
-        if self.header_size < element.header_size:
-            self.set_parent(element)
-            element.set_parent(self)
-            return
 
-        if self.parent is not None:
-            return self.parent.add_header_element(element)
-        element.set_parent(self)
-        self.add_child(element)
 
     def is_root_in_list(self):
         return self.get_root().in_list
@@ -85,10 +90,12 @@ class Element(dict, Generic[T]):
         root.in_list = True
 
     def get_root(self):
-        if self.parent is None:
-            return self
-        else:
-            return self.parent.get_root()
+        iter = self
+        count = 0
+        while iter.parent is not None:
+            count += 1
+            iter = iter.parent
+        return iter
 
     def add_note(self, note: str):
         self.notes.append(note)
@@ -130,31 +137,34 @@ def add_node(json_arrays: list, node: Element):
         json_arrays.append(node.get_root())
     return json_arrays
 
-def make_nested_json(elements, json_arrays, current):
+def make_nested_json(elements) -> list[Element]:
     """Turns an element array into a nested json array with h1 as root"""
-    if len(elements) == 0:
-        return add_node(json_arrays, current)
+    json_arrays = []
+    def keep_going():
+        return len(elements) > 0
 
-    raw = elements.pop(0)
-    element = Element(raw)
-    while(element.exclude_tag()  and len(elements) > 0):
-        raw = elements.pop(0)
-        element = Element(raw)
-    new_json = element
-    if not current:
-        current = new_json
+    def get_next_to_include():
+        scan = Element(elements.pop(0))
+        while(scan.exclude_tag()  and keep_going()):
+            raw = elements.pop(0)
+            scan = Element(raw)
+        return scan
 
-    if element.is_root_tag:
-        if len(elements) > 0:
-            json_arrays = add_node(json_arrays, current)
-        return make_nested_json(elements, json_arrays, new_json)
+    last = None
+    while(keep_going()):
+        # rewrite as out recursive function
+        element = get_next_to_include()
+        if element.is_root_tag or last is None:
+            json_arrays.append(element)
+            last = element
+            continue
 
-    if element.is_paragraph():
-        current.add_note(element.value)
-        return make_nested_json(elements, json_arrays, current)
-    else:
-        current.add_header_element(element)
-        return make_nested_json(elements, json_arrays, element)
+        if element.is_paragraph():
+            last.add_note(element.value)
+        else:
+            last.add_header_element(element)
+            last = element
+    return json_arrays
 
 
 def fonts(doc, granularity=False):
@@ -304,6 +314,8 @@ def build_dict(elements):
 
 def main():
 
+    # OUTPUT_FILE = './output/madhouse.json'
+    # INPUT_FILE = './input/madhouse.pdf'
     OUTPUT_FILE = './output/blue_alley.json'
     INPUT_FILE = './input/blue_alley.pdf'
     doc = fitz.open(INPUT_FILE)
@@ -314,8 +326,9 @@ def main():
 
     elements = headers_para(doc, size_tag) # get headers and paragraphs
 
-    nested = make_nested_json(elements, [], {})
+    nested = make_nested_json(elements)
 
+    print(f'Writing to {OUTPUT_FILE} [{len(nested)}] elements')
     with open(OUTPUT_FILE, 'w') as json_out: # write to json file
         json.dump(nested, json_out, indent=4) # dump the elements to json file
 
