@@ -1,6 +1,6 @@
 # PDF Parse
 
-Pares PDF to JSON that is easily consumable by any other application.
+Parse PDF to JSON that is easily consumable by other applications.
 
 The motivation of this project is to parse a PDF into a JSON schema that
 maintains the structure and hierarchy of the PDF. This means that text related
