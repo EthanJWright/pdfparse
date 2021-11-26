@@ -109,6 +109,7 @@ class Element(dict, Generic[T]):
 
     def is_paragraph(self):
         if self.is_header:
+            print(f'Header size: {self.header_size} - largest: {self.largest_header}')
             return self.header_size > self.largest_header
         return 'p' in self.tag or 's' in self.tag
 
@@ -338,14 +339,15 @@ def main():
     elements = headers_para(doc, size_tag) # get headers and paragraphs
 
     # get the root header
-    root_header = args.root or None
+    root_header = args.root or "h2"
 
     # get the max header
-    max_header = int(args.max) or None
+    max_header = int(args.max) or 6
 
     opts = [ opt for opt in [root_header, max_header] if opt ]
 
-    nested = make_nested_json(elements, *opts)
+    print(f'Opts: {opts}')
+    nested = make_nested_json(elements, max_header, root_header)
 
     print(f'Writing to {output_file} [{len(nested)}] elements')
     with open(output_file, 'w') as json_out: # write to json file
