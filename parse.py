@@ -23,6 +23,26 @@ def get_tag(element: str) -> tuple[str, str]:
 
 
 T = TypeVar('T')
+class Note(dict, Generic[T]):
+    def __init__(self, tag, value):
+        self.tag = tag
+        self.value = value
+        dict.__init__(self, value=self.value, tag=self.tag)
+
+    def __str__(self):
+        return self.value
+
+    def __repr__(self):
+        return self.value
+
+    def toJSON(self):
+        return json.dumps(self.__dict__, default=lambda o: o.__dict__,
+            sort_keys=True, indent=4)
+
+    def __dict__(self):
+        return {'note': self.value, 'tag': self.tag}
+
+
 class Element(dict, Generic[T]):
     """Represents an element in the document.
     :param value: the text of the element
@@ -41,13 +61,17 @@ class Element(dict, Generic[T]):
         self.tag: str = tag
         self.parent: Union['Element[T]', None] = None
         self.children: list['Element[T]'] = []
-        self.notes: list[str] = []
+        self.notes: list[Note] = []
         self.is_header: bool = "h" in tag
         self.header_size: int = int(tag[1:]) if self.is_header else 0
         self.__root_header = root_header
         self.is_root_tag: bool = self.tag == self.__root_header
         self.largest_header = max_header
+        self.drop_tag_list = []
         dict.__init__(self, value=self.value, tag=self.tag, notes=self.notes, children=self.children)
+
+    def drop_tags(self, tags):
+        self.drop_tag_list = tags
 
     def set_parent(self, parent: 'Element[T]'):
         self.parent = parent
@@ -99,8 +123,11 @@ class Element(dict, Generic[T]):
             iter = iter.parent
         return iter
 
-    def add_note(self, note: str):
-        self.notes.append(note)
+    def add_note(self, note: str, tag: str):
+        if any(map(tag.__contains__, self.drop_tag_list)):
+            print(f'Dropping:{tag} - {note}')
+            return
+        self.notes.append(Note(tag, note))
 
     def include_tag(self):
         if self.tag == 'h1':
@@ -109,9 +136,8 @@ class Element(dict, Generic[T]):
 
     def is_paragraph(self):
         if self.is_header:
-            print(f'Header size: {self.header_size} - largest: {self.largest_header}')
             return self.header_size > self.largest_header
-        return 'p' in self.tag or 's' in self.tag
+        return any(map(self.tag.__contains__, ['p', 's']))
 
     def exclude_tag(self):
         return not self.include_tag()
@@ -140,9 +166,10 @@ def add_node(json_arrays: list, node: Element):
         json_arrays.append(node.get_root())
     return json_arrays
 
-def make_nested_json(elements, max_header=6, root_header="h2") -> list[Element]:
+def make_nested_json(elements, max_header=6, root_header="h2", drop_tags=[]) -> tuple[ list[Element], list[Element] ]:
     """Turns an element array into a nested json array with h1 as root"""
-    json_arrays = []
+    element_list: list[Element] = []
+    json_arrays: list[Element] = []
     def keep_going():
         return len(elements) > 0
 
@@ -155,19 +182,21 @@ def make_nested_json(elements, max_header=6, root_header="h2") -> list[Element]:
 
     last = None
     while(keep_going()):
-        # rewrite as out recursive function
         element = get_next_to_include()
+        if len(drop_tags) > 0:
+            element.drop_tags(drop_tags)
         if element.is_root_tag or last is None:
             json_arrays.append(element)
             last = element
             continue
 
         if element.is_paragraph():
-            last.add_note(element.value)
+            last.add_note(element.value, element.tag)
         else:
+            element_list.append(element)
             last.add_header_element(element)
             last = element
-    return json_arrays
+    return (json_arrays, element_list)
 
 
 def fonts(doc, granularity=False):
@@ -314,6 +343,10 @@ def build_dict(elements):
             if "h" in res[0]:
                 print(res)
 
+def reverse_notes(flat):
+    for node in flat:
+        node.notes.reverse()
+
 
 def main():
     # use argparse to get the input PDF file
@@ -325,6 +358,11 @@ def main():
     # use argparse to get the root header size
     parser.add_argument('-r', '--root', help='root header', required=False)
 
+    # add param to enable note reversal
+    parser.add_argument('-n', '--reverse', help='reverse notes', required=False)
+
+    # add param to pass csv of tags to drop
+    parser.add_argument('-d', '--drop', help='drop tags', required=False)
 
     args = parser.parse_args()
     input_file = args.input
@@ -342,12 +380,22 @@ def main():
     root_header = args.root or "h2"
 
     # get the max header
-    max_header = int(args.max) or 6
+    max_header = 6 if args.max == None else int(args.max)
 
-    opts = [ opt for opt in [root_header, max_header] if opt ]
+    # parse drop tag csv into a list
+    drop_tags = args.drop.split(',') if args.drop else []
 
-    print(f'Opts: {opts}')
-    nested = make_nested_json(elements, max_header, root_header)
+    (nested, flat)= make_nested_json(elements, max_header, root_header, drop_tags)
+
+    # if note reversal is enabled, reverse the reverse_notes
+    if args.reverse:
+        print(f'Reversing the notes...')
+        reverse_notes(flat)
+
+    # elements = Elements()
+    # elements.load_from_list(nested)
+    # for element in elements:
+    #     print(element.value)
 
     print(f'Writing to {output_file} [{len(nested)}] elements')
     with open(output_file, 'w') as json_out: # write to json file
