@@ -14,6 +14,12 @@ approach was sampled from [here](https://towardsdatascience.com/extracting-heade
 My use case is to translate D&D modules into structured JSON so I can then
 import them as a directory based journal structure in my game.
 
+## Installation
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
 ## Use
 
 ```bash
