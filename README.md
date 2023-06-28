@@ -22,6 +22,17 @@ python3 -m pip install -r requirements.txt
 
 ## Use
 
+### Note
+
+I am including the pure version of the source in the README, that simply seeks
+to convert PDFs to HTML using font weights, etc. You can run that with the
+command below.
+
+```bash
+# usage: toHtml.py [-h] -i INPUT
+python3 toHtml.py --input=input/test.pdf
+```
+
 ```bash
 # usage: parse.py [-h] -i INPUT [-m MAX] [-r ROOT]
 #
